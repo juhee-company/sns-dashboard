@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>부업 콘텐츠 캘린더</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --ink:#1c1c1a; --ink-soft:#6b6a63; --ink-faint:#a3a199;
+    --paper:#f7f5f0; --card:#ffffff; --line:#e6e3da;
+    --muted:#a3a199; --muted-bg:#eeece5;
+    --warn:#b5720f; --warn-bg:#fbeecd;
+    --ok:#3d7a3f; --ok-bg:#e5f0e2;
+    --accent:#3457a6; --accent-bg:#e6ecfb;
+    --danger:#c62828; --danger-bg:#fbe7e7;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1100px; margin:0 auto; padding:28px 20px 60px;}
+  header{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;}
+  h1{font-size:19px; font-weight:600; margin:0; letter-spacing:-0.01em;}
+  .meta{font-size:12px; color:var(--ink-faint);}
+  #refresh{
+    font-size:12px; color:var(--ink-soft); background:var(--card); border:1px solid var(--line);
+    border-radius:8px; padding:6px 12px; cursor:pointer;
+  }
+  #refresh:hover{border-color:var(--ink-faint);}
+
+  .legend{
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    font-size:12px; color:var(--ink-soft); margin-bottom:18px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px;
+  }
+  .legend-group{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+  .legend-divider{width:1px; height:16px; background:var(--line);}
+  .legend-item{display:flex; align-items:center; gap:5px; white-space:nowrap;}
+  .legend-item i{font-size:15px;}
+
+  .nav{display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:16px;}
+  .nav button{
+    background:var(--card); border:1px solid var(--line); border-radius:8px;
+    width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; color:var(--ink-soft);
+  }
+  .nav button:hover{border-color:var(--ink-faint);}
+  .nav .month-label{font-size:16px; font-weight:600; min-width:120px; text-align:center;}
+  .nav .today-btn{font-size:12px; padding:5px 10px; width:auto; height:auto; color:var(--ink-soft);}
+
+  .summary{display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:10px; margin-bottom:20px;}
+  .metric{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px;}
+  .metric .label{font-size:12px; color:var(--ink-faint); margin-bottom:5px;}
+  .metric .value{font-size:20px; font-weight:600; display:flex; align-items:baseline; gap:4px;}
+  .metric .value.warn{color:var(--warn);}
+  .metric .value.danger{color:var(--danger); font-weight:700;}
+  .metric .value input{
+    width:44px; font-size:20px; font-weight:600; font-family:inherit; color:var(--ink);
+    border:none; border-bottom:1px dashed var(--ink-faint); background:transparent; padding:0;
+  }
+  .metric .value input:focus{outline:none; border-bottom-color:var(--ink);}
+
+  .weekdays{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; margin-bottom:6px;}
+  .weekdays div{font-size:12px; color:var(--ink-faint); text-align:center; padding:2px 0;}
+  .weekdays div.sun{color:#b5544a;} .weekdays div.sat{color:#3457a6;}
+
+  .calendar{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; margin-bottom:14px;}
+  .day{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px; min-height:74px; display:flex; flex-direction:column; gap:5px;}
+  .day.has-data{cursor:pointer;}
+  .day.has-data:hover{border-color:var(--ink-faint);}
+  .day.today{border-color:var(--ink); box-shadow:0 0 0 1px var(--ink);}
+  .day.selected{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent);}
+  .day.pad{background:transparent; border-color:transparent;}
+  .day-num{font-size:11px; color:var(--ink-faint);}
+  .day.today .day-num{color:var(--ink); font-weight:700;}
+  .series-pill{
+    border-radius:7px; padding:4px 6px; font-size:11px; font-weight:600;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .platform-row{display:flex; gap:6px; margin-top:auto;}
+  .platform-row i{font-size:14px;}
+  .platform-icon-wrap{position:relative; display:inline-flex; line-height:0;}
+  .platform-badge{
+    position:absolute; bottom:-3px; right:-4px; font-size:9px;
+    background:var(--card); border-radius:50%; opacity:1 !important;
+  }
+  .platform-badge.badge-done{color:var(--ok);}
+  .platform-badge.badge-scheduled{color:var(--accent);}
+  .status-chip{display:flex; align-items:center; gap:3px; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .status-chip i{font-size:13px; flex:0 0 auto;}
+  .status-chip.overdue{color:var(--danger); font-weight:700;}
+
+  .s-purple{background:#ece9fb; color:#4b3fb3;}
+  .s-teal{background:#e1f5ee; color:#0f6e56;}
+  .s-coral{background:#faece7; color:#993c1d;}
+  .s-pink{background:#fbeaf0; color:#993556;}
+  .s-amber{background:#fdf1d9; color:#8a5a00;}
+  .s-blue{background:#e2edfb; color:#1d4e89;}
+  .s-rose{background:#fce3e8; color:#a13a5a;}
+  .s-lime{background:#eef6d9; color:#4f6b12;}
+  .s-cyan{background:#dff4f6; color:#12707a;}
+  .s-violet{background:#efe3fb; color:#5b2f96;}
+  .s-brown{background:#f1e6dd; color:#7a4a26;}
+  .s-slate{background:#e6eaee; color:#3d4a58;}
+
+  .c-muted{color:var(--muted);} .c-warn{color:var(--warn);} .c-ok{color:var(--ok);} .c-accent{color:var(--accent);}
+
+  /* 상세 패널 */
+  #detailPanel{
+    display:none; background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:14px 18px; margin-bottom:26px;
+  }
+  #detailPanel .d-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
+  #detailPanel .d-date{font-size:12px; color:var(--ink-faint);}
+  #detailPanel .d-close{cursor:pointer; color:var(--ink-faint); font-size:16px; background:none; border:none;}
+  #detailPanel .d-title{font-size:14px; font-weight:600; margin:2px 0 8px;}
+  #detailPanel .d-status{display:flex; align-items:center; gap:5px; font-size:12px; margin-bottom:8px;}
+  #detailPanel .d-status.overdue{color:var(--danger); font-weight:700;}
+  #detailPanel .d-platforms{display:flex; gap:14px; margin-bottom:8px;}
+  #detailPanel .d-platforms span{display:flex; align-items:center; gap:4px; font-size:12px;}
+  #detailPanel .d-platforms i{font-size:16px;}
+  #detailPanel .d-note{font-size:12.5px; color:var(--ink-soft); background:var(--paper); border-radius:8px; padding:8px 10px; margin-bottom:8px; line-height:1.5;}
+  #detailPanel .d-item + .d-item{margin-top:14px; padding-top:14px; border-top:1px solid var(--line);}
+
+  .tracker-title{font-size:13px; color:var(--ink-soft); margin-bottom:10px;}
+  .empty-note{color:var(--ink-faint); font-size:12.5px; padding:12px 4px;}
+
+  .table-card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:4px 12px;}
+  .platform-table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  .platform-table th{
+    text-align:left; color:var(--ink-faint); font-weight:500; font-size:11.5px;
+    padding:10px 8px; border-bottom:1px solid var(--line); white-space:nowrap;
+  }
+  .platform-table td{padding:8px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  .platform-table tr:last-child td{border-bottom:none;}
+  .platform-table tr.row-complete{background:var(--ok-bg);}
+  .platform-table td.pt-title{color:var(--ink-primary,var(--ink)); font-weight:500; max-width:320px; overflow:hidden; text-overflow:ellipsis;}
+  .platform-table td.pt-empty{color:var(--ink-faint); text-align:center;}
+  .platform-table th:not(:first-child):not(:nth-child(2)){text-align:center;}
+  .platform-table td:not(.pt-title):not(:first-child){text-align:center;}
+  .pt-badge{padding:3px 9px; border-radius:6px; font-weight:600; font-size:11px; display:inline-block;}
+  .pt-date{font-size:9.5px; color:var(--ink-faint); margin-top:2px;}
+  .tracker-row{display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:6px;}
+  .tracker-row .series-pill{flex:0 0 92px; width:92px; box-sizing:border-box; text-align:center;}
+  .bar{flex:1; height:6px; background:var(--muted-bg); border-radius:4px; overflow:hidden;}
+  .bar-fill{height:100%; background:var(--ok);}
+  .tracker-row .frac{font-size:12px; color:var(--ink-faint); white-space:nowrap;}
+
+  @media (max-width:700px){
+    .calendar{gap:4px;}
+    .summary{grid-template-columns:repeat(2,1fr);}
+    .day{min-height:60px; padding:6px;}
+    .series-pill{font-size:10px; padding:4px 5px;}
+    .platform-row i{font-size:12px;}
+    .status-chip{font-size:9px;}
+    .status-chip i{font-size:11px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>부업 콘텐츠 캘린더</h1>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span class="meta" id="updatedAt">불러오는 중...</span>
+      <button id="refresh">새로고침</button>
+    </div>
+  </header>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="legend">
+    <div class="legend-group">
+      <span class="legend-item"><i class="ti ti-brand-youtube" style="color:#e63946;"></i>유튜브</span>
+      <span class="legend-item"><i class="ti ti-notes" style="color:#03c75a;"></i>블로그</span>
+      <span class="legend-item"><i class="ti ti-brand-instagram" style="color:#c13584;"></i>인스타</span>
+      <span class="legend-item"><i class="ti ti-brand-tiktok" style="color:#0891b2;"></i>틱톡</span>
+    </div>
+    <div class="legend-divider"></div>
+    <div class="legend-group">
+      <span class="legend-item"><i class="ti ti-brand-youtube" style="color:#e63946; opacity:0.28;"></i>대기</span>
+      <span class="legend-item"><i class="ti ti-brand-youtube" style="color:#e63946; opacity:0.55;"></i>진행중</span>
+      <span class="legend-item">
+        <span class="platform-icon-wrap"><i class="ti ti-brand-youtube" style="color:#e63946; opacity:0.85;"></i><i class="ti ti-clock platform-badge badge-scheduled"></i></span>
+        예약 (발행 대기중)
+      </span>
+      <span class="legend-item">
+        <span class="platform-icon-wrap"><i class="ti ti-brand-youtube" style="color:#e63946;"></i><i class="ti ti-circle-check platform-badge badge-done"></i></span>
+        완료 (실제 게시됨)
+      </span>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button id="prevMonth" aria-label="이전 달"><i class="ti ti-chevron-left"></i></button>
+    <div class="month-label" id="monthLabel"></div>
+    <button id="nextMonth" aria-label="다음 달"><i class="ti ti-chevron-right"></i></button>
+    <button class="today-btn" id="todayBtn">오늘</button>
+  </div>
+
+  <div class="weekdays">
+    <div class="sun">일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div class="sat">토</div>
+  </div>
+  <div class="calendar" id="calendar"></div>
+
+  <div id="detailPanel"></div>
+
+  <div id="platformTableWrap" style="margin-bottom:26px;">
+    <div class="tracker-title">콘텐츠별 SNS 업로드 현황</div>
+    <div class="table-card">
+      <div style="overflow-x:auto;"><div id="platformTableInner"></div></div>
+    </div>
+  </div>
+
+  <div id="trackerWrap">
+    <div class="tracker-title">브랜드별 이번달 진행 현황</div>
+    <div id="tracker"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   구글 시트 "웹에 게시" CSV 링크를 아래에 붙여넣으세요.
+   파일 > 공유 > 웹에 게시 > 형식: CSV > 게시 후 생성되는 URL.
+   컬럼 순서: 날짜,브랜드,제목,상태,유튜브,블로그,인스타,틱톡,메모
+   날짜는 YYYY-MM-DD 형식 (예: 2026-07-28). 과거/미래 날짜 자유롭게 등록 가능.
+   유튜브/블로그/인스타/틱톡 칸에는 대기 / 진행중 / 예약 / 완료 중 하나를 적어주세요.
+   (예약 = 작업은 끝났지만 예약발행 걸어둔 상태, 완료 = 실제로 게시된 상태)
+   ============================================================ */
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtLeEI1bw3IwvFGpQdH8iq-U7KqVsTR0MKJW6Fqpv3HQIDDvMyU6QOHAJmaf9ZKXqWvLS3s_CAU_S6/pub?output=csv";
+const GOAL_KEY = "sidehustle_monthly_goal";
+const DEFAULT_GOAL = 24;
+
+const SERIES_META = {
+  "주간회고":  {cls:"s-purple"},
+  "씨네차이나": {cls:"s-teal"},
+  "c.now":    {cls:"s-coral"},
+  "별자리운세": {cls:"s-pink"}
+};
+
+// 지정 안 된 브랜드는 이 팔레트에서 순서대로 색을 자동 배정
+const EXTRA_BRAND_COLORS = ["s-amber","s-blue","s-rose","s-lime","s-cyan","s-violet","s-brown","s-slate"];
+let DYNAMIC_BRAND_META = {};
+
+function assignDynamicBrandColors(rows){
+  DYNAMIC_BRAND_META = {};
+  const brands = [...new Set(rows.map(r => (r["브랜드"]||"").trim()).filter(Boolean))]
+    .filter(b => !SERIES_META[b])
+    .sort((a,b) => a.localeCompare(b,'ko'));
+  brands.forEach((b,i) => {
+    DYNAMIC_BRAND_META[b] = {cls: EXTRA_BRAND_COLORS[i % EXTRA_BRAND_COLORS.length]};
+  });
+}
+
+function getBrandMeta(brand){
+  const b = (brand||"").trim();
+  return SERIES_META[b] || DYNAMIC_BRAND_META[b] || {cls:"s-purple"};
+}
+
+const STATUS_META = {
+  "대기":      {icon:"ti-bulb",           cls:"c-muted", label:"대기"},
+  "진행중":    {icon:"ti-clock",           cls:"c-warn",  label:"진행중"},
+  "예약완료":   {icon:"ti-calendar-event",  cls:"c-accent",label:"예약완료"},
+  "업로드완료": {icon:"ti-circle-check",    cls:"c-ok",    label:"완료"}
+};
+STATUS_META["아이디어"] = STATUS_META["대기"]; // 기존 시트에 '아이디어'로 적어둔 경우도 인식
+
+function normalizeStatus(s){
+  return (s === "아이디어") ? "대기" : (s || "대기");
+}
+
+const ALL_PLATFORMS_REQUIRED_BRANDS = ["씨네차이나"];
+
+function deriveStatus(row){
+  const explicit = (row["상태"] || "").trim();
+  if(explicit) return normalizeStatus(explicit);
+
+  const brand = (row["브랜드"] || "").trim();
+
+  if(ALL_PLATFORMS_REQUIRED_BRANDS.includes(brand)){
+    const keys = ["유튜브","블로그","인스타","틱톡"];
+    const anyPlatformField = keys.some(k => row.hasOwnProperty(k) && row[k] !== undefined);
+    if(!anyPlatformField) return "대기";
+    const values = keys.map(k => row[k] || "대기");
+    if(values.every(v => v === "완료")) return "업로드완료";
+    if(values.every(v => v === "대기")) return "대기";
+    return "진행중";
+  }
+
+  // 씨네차이나 외 브랜드는 블로그 업로드 여부만으로 판단
+  const blogStatus = row["블로그"];
+  if(!blogStatus) return "대기";
+  if(blogStatus === "완료") return "업로드완료";
+  if(blogStatus === "대기") return "대기";
+  return "진행중"; // 예약 또는 진행중
+}
+
+function isOverdue(row){
+  const d = parseDate(row["날짜"]);
+  if(!d) return false;
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  d.setHours(0,0,0,0);
+  return d < today && deriveStatus(row) !== "업로드완료";
+}
+
+const PLATFORM_META = {
+  "유튜브": "ti-brand-youtube",
+  "블로그": "ti-notes",
+  "인스타": "ti-brand-instagram",
+  "틱톡":  "ti-brand-tiktok"
+};
+const PLATFORM_BRAND_COLOR = {
+  "유튜브": "#e63946",
+  "블로그": "#03c75a",
+  "인스타": "#c13584",
+  "틱톡":  "#0891b2"
+};
+const PLATFORM_STATUS_OPACITY = { "완료":1, "예약":0.85, "진행중":0.55, "대기":0.28, "":0.28 };
+
+const SAMPLE_ROWS = [
+  {날짜:"2026-07-20", 브랜드:"주간회고",  제목:"7월 3주차 회고", 상태:"업로드완료"},
+  {날짜:"2026-07-21", 브랜드:"씨네차이나", 제목:"베이징 촬영 비하인드", 상태:"업로드완료", 유튜브:"완료", 블로그:"완료", 인스타:"완료", 틱톡:"완료"},
+  {날짜:"2026-07-22", 브랜드:"c.now",    제목:"지난주 이슈 브리핑", 상태:"업로드완료"},
+  {날짜:"2026-07-23", 브랜드:"씨네차이나", 제목:"감독 인터뷰 정리", 상태:"업로드완료", 유튜브:"완료", 블로그:"완료", 인스타:"완료", 틱톡:"대기"},
+  {날짜:"2026-07-24", 브랜드:"c.now",    제목:"주말 개봉작 정리", 상태:"진행중"},
+  {날짜:"2026-07-25", 브랜드:"씨네차이나", 제목:"청두 미식 브이로그", 블로그:"완료"},
+  {날짜:"2026-07-26", 브랜드:"별자리운세", 제목:"7월 4주차 운세", 상태:"업로드완료"},
+
+  {날짜:"2026-07-27", 브랜드:"주간회고",  제목:"7월 4주차 회고", 상태:"업로드완료"},
+  {날짜:"2026-07-28", 브랜드:"씨네차이나", 제목:"상하이 로케이션 뒷이야기", 상태:"진행중", 유튜브:"예약", 블로그:"완료", 인스타:"진행중", 틱톡:"대기", 메모:"유튜브는 내일 오전 9시 예약발행 걸어둠. 인스타 릴스 세로 크롭 필요."},
+  {날짜:"2026-07-29", 브랜드:"c.now",    제목:"이번주 이슈 브리핑", 상태:"진행중"},
+  {날짜:"2026-07-30", 브랜드:"씨네차이나", 제목:"차기작 예고 정리", 상태:"대기", 유튜브:"대기", 블로그:"대기", 인스타:"대기", 틱톡:"대기"},
+  {날짜:"2026-07-31", 브랜드:"c.now",    제목:"다음 이슈 소재", 상태:"대기"},
+  {날짜:"2026-07-31", 브랜드:"씨네차이나", 제목:"청두 미식 브이로그", 유튜브:"완료", 인스타:"완료", 틱톡:"완료"},
+  {날짜:"2026-08-02", 브랜드:"별자리운세", 제목:"8월 1주차 운세", 상태:"대기"},
+
+  {날짜:"2026-08-03", 브랜드:"주간회고",  제목:"8월 1주차 회고", 상태:"대기"},
+  {날짜:"2026-08-04", 브랜드:"씨네차이나", 제목:"다음 소재 후보", 상태:"대기", 유튜브:"대기", 블로그:"대기", 인스타:"대기", 틱톡:"대기"}
+];
+
+let ENTRIES_BY_DATE = {};
+let viewDate = new Date();
+let selectedKey = null;
+
+function pad(n){ return n<10 ? "0"+n : ""+n; }
+function dateKey(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
+
+function parseDate(str){
+  if(!str) return null;
+  const s = String(str).trim();
+
+  // YYYY-MM-DD 또는 YYYY/MM/DD
+  let m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+
+  // 2026. 7. 26 또는 2026.7.26. (한국식, 마지막 점 유무 상관없이)
+  m = s.match(/^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?$/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+function escHtml(s){
+  return (s||"").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function getGoal(){
+  const v = parseInt(localStorage.getItem(GOAL_KEY), 10);
+  return (v && v > 0) ? v : DEFAULT_GOAL;
+}
+function setGoal(v){
+  localStorage.setItem(GOAL_KEY, v);
+}
+
+function buildIndex(rows){
+  const idx = {};
+  rows.forEach(r => {
+    const d = parseDate(r["날짜"]);
+    if(!d) return;
+    const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    if(!idx[key]) idx[key] = [];
+    idx[key].push(r);
+  });
+  return idx;
+}
+
+const PLATFORM_PRIORITY = { "완료":4, "예약":3, "진행중":2, "대기":1 };
+
+// 같은 제목(같은 브랜드)의 여러 줄을 하나의 콘텐츠로 합침.
+// 유튜브/블로그/인스타/틱톡을 서로 다른 날짜에 나눠서 올려도
+// 하나의 콘텐츠로 취급해서 "다 올라갔는지"를 정확히 판단하기 위함.
+function buildMergedContents(rows){
+  const groups = {};
+  rows.forEach(r => {
+    const title = (r["제목"] || "").trim();
+    const brand = (r["브랜드"] || "").trim();
+    // 여러 SNS에 나눠서 올리는 브랜드(씨네차이나)만 같은 제목이면 합침.
+    // 그 외 브랜드는 같은 제목을 반복해서 써도(예: 매주 같은 드라마명) 날짜별로 따로 취급.
+    const shouldMergeByTitle = ALL_PLATFORMS_REQUIRED_BRANDS.includes(brand) && title;
+    const key = shouldMergeByTitle
+      ? (brand + "__" + title)
+      : (brand + "__" + title + "__" + (r["날짜"]||"") + "__" + Math.random());
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  });
+
+  return Object.values(groups).map(groupRows => {
+    groupRows.sort((a,b) => (a["날짜"]||"").localeCompare(b["날짜"]||""));
+    const first = groupRows[0];
+
+    const merged = {
+      "날짜": first["날짜"],
+      "브랜드": first["브랜드"],
+      "제목": first["제목"],
+      "상태": "",
+      "메모": groupRows.map(r => r["메모"]).filter(Boolean).join(" / "),
+      "_platformDates": {}
+    };
+
+    ["유튜브","블로그","인스타","틱톡"].forEach(k => {
+      let best = null;
+      groupRows.forEach(r => {
+        const val = r[k];
+        if(!val) return;
+        const p = PLATFORM_PRIORITY[val] ?? 0;
+        if(!best || p > best.p || (p === best.p && (r["날짜"]||"") > (best.date||""))){
+          best = {p, val, date:r["날짜"]};
+        }
+      });
+      if(best){
+        merged[k] = best.val;
+        merged["_platformDates"][k] = best.date;
+      }
+    });
+
+    const explicitStatuses = groupRows.map(r => (r["상태"]||"").trim()).filter(Boolean);
+    if(explicitStatuses.length) merged["상태"] = explicitStatuses[explicitStatuses.length-1];
+
+    return merged;
+  });
+}
+
+function platformIconsHtml(row){
+  const keys = ["유튜브","블로그","인스타","틱톡"];
+  return keys
+    .filter(k => row[k])
+    .map(k => {
+      const st = row[k] || "대기";
+      const opacity = PLATFORM_STATUS_OPACITY[st] ?? 0.28;
+      let badge = "";
+      if(st === "완료") badge = `<i class="ti ti-circle-check platform-badge badge-done"></i>`;
+      else if(st === "예약") badge = `<i class="ti ti-clock platform-badge badge-scheduled"></i>`;
+      return `<span class="platform-icon-wrap" title="${k}: ${st}">
+        <i class="ti ${PLATFORM_META[k]}" style="color:${PLATFORM_BRAND_COLOR[k]}; opacity:${opacity};"></i>
+        ${badge}
+      </span>`;
+    })
+    .join("");
+}
+
+function renderCalendar(){
+  const y = viewDate.getFullYear(), m = viewDate.getMonth();
+  document.getElementById("monthLabel").textContent = `${y}년 ${m+1}월`;
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+
+  const today = new Date();
+  const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const cal = document.getElementById("calendar");
+  cal.innerHTML = "";
+
+  for(let i=0; i<totalCells; i++){
+    const dayNum = i - firstDow + 1;
+    const el = document.createElement("div");
+
+    if(dayNum < 1 || dayNum > daysInMonth){
+      el.className = "day pad";
+      cal.appendChild(el);
+      continue;
+    }
+
+    const key = dateKey(y, m, dayNum);
+    const rows = ENTRIES_BY_DATE[key] || [];
+    const hasData = rows.length > 0;
+
+    let cls = "day";
+    if(key === todayKey) cls += " today";
+    if(key === selectedKey) cls += " selected";
+    if(hasData) cls += " has-data";
+    el.className = cls;
+
+    let inner = `<div class="day-num">${dayNum}</div>`;
+    rows.forEach(row => {
+      const meta = getBrandMeta(row["브랜드"]);
+      const sm = calendarStatusDisplay(row);
+      const overdue = isOverdue(row);
+      const titleText = row["제목"] ? escHtml(row["제목"]) : sm.label;
+      inner += `<div class="series-pill ${meta.cls}">${escHtml(row["브랜드"])}</div>`;
+      inner += `<div class="status-chip ${overdue ? 'overdue' : sm.cls}" title="${escHtml(row["제목"]||'')} - ${overdue ? '지연' : sm.label}"><i class="ti ${overdue ? 'ti-alert-triangle' : sm.icon}"></i>${titleText}${overdue ? ' · 지연' : ''}</div>`;
+    });
+    el.innerHTML = inner;
+    if(hasData){
+      el.addEventListener("click", () => {
+        selectedKey = (selectedKey === key) ? null : key;
+        renderCalendar();
+        renderDetail();
+      });
+    }
+    cal.appendChild(el);
+  }
+}
+
+function renderDetail(){
+  const panel = document.getElementById("detailPanel");
+  if(!selectedKey || !ENTRIES_BY_DATE[selectedKey]){
+    panel.style.display = "none";
+    panel.innerHTML = "";
+    return;
+  }
+  const rows = ENTRIES_BY_DATE[selectedKey];
+  const [y,mo,d] = selectedKey.split("-").map(Number);
+  const dateLabel = `${y}년 ${mo}월 ${d}일`;
+
+  let html = `<div class="d-head"><span class="d-date">${dateLabel}</span><button class="d-close" id="closeDetail">닫기</button></div>`;
+
+  rows.forEach((row, i) => {
+    const meta = getBrandMeta(row["브랜드"]);
+    const sm = STATUS_META[deriveStatus(row)] || STATUS_META["대기"];
+    const overdue = isOverdue(row);
+    const hasPlatforms = ["유튜브","블로그","인스타","틱톡"].some(k => row[k]);
+
+    html += `<div class="d-item">`;
+    html += `<div class="series-pill ${meta.cls}" style="display:inline-block;">${escHtml(row["브랜드"])}</div>`;
+    html += `<div class="d-title">${escHtml(row["제목"]||"(제목 없음)")}</div>`;
+    html += `<div class="d-status ${overdue ? 'overdue' : sm.cls}"><i class="ti ${overdue ? 'ti-alert-triangle' : sm.icon}"></i>${overdue ? sm.label + ' · 지연됨' : sm.label}</div>`;
+
+    if(hasPlatforms){
+      const platformDates = row["_platformDates"] || {};
+      html += `<div class="d-platforms">`;
+      ["유튜브","블로그","인스타","틱톡"].forEach(k => {
+        if(!row[k]) return;
+        const st = row[k] || "대기";
+        const opacity = PLATFORM_STATUS_OPACITY[st] ?? 0.28;
+        const pDate = parseDate(platformDates[k]);
+        const dateNote = pDate ? ` (${pDate.getMonth()+1}/${pDate.getDate()})` : "";
+        html += `<span><i class="ti ${PLATFORM_META[k]}" style="color:${PLATFORM_BRAND_COLOR[k]}; opacity:${opacity};"></i>${k} ${st}${dateNote}</span>`;
+      });
+      html += `</div>`;
+    }
+    if(row["메모"]) html += `<div class="d-note">${escHtml(row["메모"])}</div>`;
+    html += `</div>`;
+  });
+
+  panel.innerHTML = html;
+  panel.style.display = "block";
+  document.getElementById("closeDetail").addEventListener("click", () => {
+    selectedKey = null;
+    renderCalendar();
+    renderDetail();
+  });
+}
+
+function seriesProgress(items){
+  const total = items.length;
+  const done = items.filter(r => deriveStatus(r) === "업로드완료").length;
+  return {done, total};
+}
+
+function calendarStatusDisplay(row){
+  const raw = deriveStatus(row);
+  if(raw === "업로드완료") return {label:"게시완료", cls:"c-ok", icon:"ti-circle-check"};
+  if(raw === "예약완료")   return {label:"예약완료", cls:"c-accent", icon:"ti-calendar-event"};
+  return {label:"준비중", cls:"c-muted", icon:"ti-hourglass"};
+}
+
+function monthEntries(){
+  const y = viewDate.getFullYear(), m = viewDate.getMonth();
+  const out = [];
+  Object.keys(ENTRIES_BY_DATE).forEach(key => {
+    const [ky, km] = key.split("-").map(Number);
+    if(ky === y && km === m+1) out.push(...ENTRIES_BY_DATE[key]);
+  });
+  return out;
+}
+
+function getOrderedBrands(rows){
+  const PREFERRED = ["주간회고","씨네차이나","c.now","별자리운세"];
+  const present = [...new Set(rows.map(r => (r["브랜드"]||"").trim()).filter(Boolean))];
+  const known = PREFERRED.filter(b => present.includes(b));
+  const others = present.filter(b => !PREFERRED.includes(b)).sort((a,b) => a.localeCompare(b,'ko'));
+  return [...known, ...others];
+}
+
+function renderSummary(){
+  const rows = monthEntries();
+  const done = rows.filter(r => deriveStatus(r) === "업로드완료").length;
+  const goal = getGoal();
+  const pct = goal ? Math.min(100, Math.round((done/goal)*100)) : 0;
+  const behind = rows.filter(isOverdue).length;
+
+  let html = `
+    <div class="metric"><div class="label">이번달 진행률</div><div class="value">${pct}%</div></div>
+    <div class="metric"><div class="label">밀린 항목</div><div class="value ${behind>0?'danger':''}">${behind}건</div></div>
+    <div class="metric"><div class="label">이번달 업로드</div><div class="value">${done} / <input type="number" min="1" id="goalInput" value="${goal}" /></div></div>
+  `;
+
+  getOrderedBrands(rows).forEach(name => {
+    const items = rows.filter(r => (r["브랜드"]||"").trim() === name);
+    if(items.length === 0) return;
+    const {done:d, total:t} = seriesProgress(items);
+    html += `<div class="metric"><div class="label">${escHtml(name)}</div><div class="value">${d} / ${t}</div></div>`;
+  });
+
+  document.getElementById("summary").innerHTML = html;
+
+  document.getElementById("goalInput").addEventListener("change", (e) => {
+    const v = parseInt(e.target.value, 10);
+    if(v > 0){ setGoal(v); renderSummary(); }
+  });
+}
+
+function renderPlatformTable(){
+  const wrap = document.getElementById("platformTableWrap");
+  const rows = monthEntries()
+    .filter(r => ["유튜브","블로그","인스타","틱톡"].some(k => r[k]))
+    .sort((a,b) => (a["날짜"]||"").localeCompare(b["날짜"]||""));
+
+  if(rows.length === 0){
+    wrap.style.display = "none";
+    return;
+  }
+  wrap.style.display = "block";
+
+  let html = `<table class="platform-table"><thead><tr>
+    <th style="width:56px;">날짜</th><th>브랜드</th><th>제목</th><th>유튜브</th><th>블로그</th><th>인스타</th><th>틱톡</th><th>전체</th>
+  </tr></thead><tbody>`;
+
+  rows.forEach(row => {
+    const d = parseDate(row["날짜"]);
+    const dLabel = d ? `${d.getMonth()+1}/${d.getDate()}` : escHtml(row["날짜"]||"");
+    const platformDates = row["_platformDates"] || {};
+    const allDone = deriveStatus(row) === "업로드완료";
+    const meta = getBrandMeta(row["브랜드"]);
+
+    html += `<tr class="${allDone ? 'row-complete' : ''}"><td>${dLabel}</td>`;
+    html += `<td><span class="series-pill ${meta.cls}" style="display:inline-block;">${escHtml(row["브랜드"]||"-")}</span></td>`;
+    html += `<td class="pt-title">${allDone ? '<i class="ti ti-trophy" style="color:var(--ok); margin-right:4px;"></i>' : ''}${escHtml(row["제목"]||"-")}</td>`;
+
+    ["유튜브","블로그","인스타","틱톡"].forEach(k => {
+      const st = row[k];
+      if(!st){ html += `<td class="pt-empty">-</td>`; return; }
+      const color = PLATFORM_BRAND_COLOR[k];
+      const opacity = PLATFORM_STATUS_OPACITY[st] ?? 0.28;
+      const pDate = parseDate(platformDates[k]);
+      const dateNote = (pDate && dateKey(pDate.getFullYear(),pDate.getMonth(),pDate.getDate()) !== dateKey(d.getFullYear(),d.getMonth(),d.getDate()))
+        ? `<div class="pt-date">${pDate.getMonth()+1}/${pDate.getDate()}</div>` : "";
+      html += `<td><span class="pt-badge" style="background:${color}1a; color:${color}; opacity:${opacity};">${escHtml(st)}</span>${dateNote}</td>`;
+    });
+
+    const overall = calendarStatusDisplay(row);
+    const overdue = isOverdue(row);
+    html += `<td><span class="status-chip ${overdue ? 'overdue' : overall.cls}" style="justify-content:center;"><i class="ti ${overdue ? 'ti-alert-triangle' : overall.icon}"></i>${overdue ? overall.label + ' · 지연' : overall.label}</span></td>`;
+
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
+  document.getElementById("platformTableInner").innerHTML = html;
+}
+
+function renderTracker(){
+  const rows = monthEntries();
+  const wrap = document.getElementById("tracker");
+  wrap.innerHTML = "";
+
+  const brands = getOrderedBrands(rows);
+  if(brands.length === 0){
+    wrap.innerHTML = `<div class="empty-note">이번달 시작된 콘텐츠가 없어요.</div>`;
+    return;
+  }
+
+  brands.forEach(name => {
+    const items = rows.filter(r => (r["브랜드"]||"").trim() === name);
+    if(items.length === 0) return;
+
+    const {done, total} = seriesProgress(items);
+    const label = `${done} / ${total} 완료`;
+
+    const meta = getBrandMeta(name);
+    const pct = total ? Math.round((done/total)*100) : 0;
+    const row = document.createElement("div");
+    row.className = "tracker-row";
+    row.innerHTML = `
+      <div class="series-pill ${meta.cls}">${escHtml(name)}</div>
+      <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
+      <div class="frac">${label}</div>
+    `;
+    wrap.appendChild(row);
+  });
+}
+
+function renderAll(){
+  renderSummary();
+  renderCalendar();
+  renderDetail();
+  renderPlatformTable();
+  renderTracker();
+}
+
+function load(){
+  document.getElementById("updatedAt").textContent = "불러오는 중...";
+
+  if(!CSV_URL || CSV_URL.includes("PASTE_YOUR")){
+    document.getElementById("updatedAt").textContent = "샘플 데이터 표시 중 (CSV_URL 미설정)";
+    assignDynamicBrandColors(SAMPLE_ROWS);
+    ENTRIES_BY_DATE = buildIndex(buildMergedContents(SAMPLE_ROWS));
+    renderAll();
+    return;
+  }
+
+  Papa.parse(CSV_URL, {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: (res) => {
+      document.getElementById("updatedAt").textContent =
+        "마지막 업데이트: " + new Date().toLocaleString("ko-KR");
+      assignDynamicBrandColors(res.data);
+      ENTRIES_BY_DATE = buildIndex(buildMergedContents(res.data));
+      renderAll();
+    },
+    error: () => {
+      document.getElementById("updatedAt").textContent = "불러오기 실패, 샘플 데이터 표시 중";
+      assignDynamicBrandColors(SAMPLE_ROWS);
+      ENTRIES_BY_DATE = buildIndex(buildMergedContents(SAMPLE_ROWS));
+      renderAll();
+    }
+  });
+}
+
+document.getElementById("refresh").addEventListener("click", load);
+document.getElementById("prevMonth").addEventListener("click", () => {
+  viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth()-1, 1);
+  renderAll();
+});
+document.getElementById("nextMonth").addEventListener("click", () => {
+  viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth()+1, 1);
+  renderAll();
+});
+document.getElementById("todayBtn").addEventListener("click", () => {
+  viewDate = new Date();
+  renderAll();
+});
+
+load();
+</script>
+</body>
+</html>
